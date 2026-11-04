@@ -1,6 +1,19 @@
 # LogKit (iOS / Swift)
 
-**LogKit** 是一款纯 Swift 打造、SwiftUI 原生驱动的 iOS 边端日志框架，内置极简美观、支持明暗双主题与高效筛选的应用内日志调试控制台。
+<p align="center">
+  <b>纯 Swift 打造、SwiftUI 原生驱动的 iOS 边端日志框架与应用内调试控制台</b>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-iOS%20%7C%20macOS-brightgreen.svg" alt="Platform" />
+  <img src="https://img.shields.io/badge/Swift-5.9%2B-orange.svg" alt="Swift" />
+  <img src="https://img.shields.io/badge/UI-SwiftUI-blue.svg" alt="SwiftUI" />
+  <img src="https://img.shields.io/badge/SPM-Supported-green.svg" alt="SPM" />
+  <a href="https://github.com/e-hai/LogKit-Android"><img src="https://img.shields.io/badge/Android%20Version-LogKit--Android-purple.svg" alt="Android Version" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-red.svg" alt="License" /></a>
+</p>
+
+> 💡 **跨平台支持**：如果你正在寻找 Android / Kotlin 版本的实现，请访问独立仓库 👉 [LogKit-Android (Kotlin / Jetpack Compose)](https://github.com/e-hai/LogKit-Android)。
 
 ---
 
