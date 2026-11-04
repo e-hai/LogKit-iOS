@@ -62,7 +62,8 @@ public struct LogScreen: View {
     private let onBackClick: () -> Void
 
     @State private var isDarkTheme: Bool = true
-    @State private var showTagDialog: Bool = false
+    @State private var isSearchExpanded: Bool = false
+    @State private var tagSearchQuery: String = ""
     @State private var isHeaderVisible: Bool = true
     @State private var toastMessage: String? = nil
 
@@ -75,6 +76,14 @@ public struct LogScreen: View {
 
     private var themeColors: LogThemeColors {
         isDarkTheme ? darkThemeColors : lightThemeColors
+    }
+
+    private var filteredTags: [String] {
+        let rawList = viewModel.tags.filter { $0 != LogViewModel.tagShowAllLog }
+        if tagSearchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
+            return rawList
+        }
+        return rawList.filter { $0.localizedCaseInsensitiveContains(tagSearchQuery) }
     }
 
     public var body: some View {
@@ -97,7 +106,7 @@ public struct LogScreen: View {
                         Image(systemName: "tray")
                             .font(.system(size: 40))
                             .foregroundColor(themeColors.textSecondary)
-                        Text("暂无相关日志记录")
+                        Text(viewModel.selectedLevels.count < allLevels.count || !viewModel.selectedTags.isEmpty ? "未匹配到相关条件的日志" : "暂无相关日志记录")
                             .foregroundColor(themeColors.textSecondary)
                             .font(.system(size: 15))
                     }
@@ -162,25 +171,13 @@ public struct LogScreen: View {
                 }
             }
         }
-        .sheet(isPresented: $showTagDialog) {
-            TagSelectionDialog(
-                tags: viewModel.tags,
-                selectedTag: viewModel.selectedTag,
-                themeColors: themeColors,
-                onSelectTag: { tag in
-                    viewModel.selectTag(tag)
-                    showTagDialog = false
-                },
-                onDismiss: { showTagDialog = false }
-            )
-        }
     }
 
-    // MARK: - Header Components
+    // MARK: - Header View
 
     private var headerView: some View {
         VStack(spacing: 0) {
-            // Navigation Bar
+            // 1. Navigation Bar
             HStack(spacing: 12) {
                 Button(action: onBackClick) {
                     Image(systemName: "chevron.left")
@@ -192,24 +189,31 @@ public struct LogScreen: View {
                     Text("LogKit 日志控制台")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundColor(themeColors.textPrimary)
-                    Text("Tag: \(viewModel.selectedTag) (\(viewModel.displayedLogs.count)/\(viewModel.logs.count) 条)")
+
+                    let tagTitle = viewModel.selectedTags.isEmpty ? "Tag: 全部标签" : "Tags (\(viewModel.selectedTags.count)): \(viewModel.selectedTags.joined(separator: ", "))"
+                    Text("\(tagTitle) (\(viewModel.displayedLogs.count)/\(viewModel.logs.count) 条)")
                         .font(.system(size: 12))
                         .foregroundColor(themeColors.textSecondary)
+                        .lineLimit(1)
                 }
 
                 Spacer()
+
+                // Collapsible Search Toggle Button
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isSearchExpanded.toggle()
+                    }
+                }) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 17))
+                        .foregroundColor(isSearchExpanded || !viewModel.selectedTags.isEmpty ? .blue : themeColors.textPrimary)
+                }
 
                 // Theme Toggle
                 Button(action: { isDarkTheme.toggle() }) {
                     Text(isDarkTheme ? "☀️" : "🌙")
                         .font(.system(size: 18))
-                }
-
-                // Tag List Dialog
-                Button(action: { showTagDialog = true }) {
-                    Image(systemName: "tag")
-                        .font(.system(size: 18))
-                        .foregroundColor(viewModel.selectedTag != LogViewModel.tagShowAllLog ? .blue : themeColors.textPrimary)
                 }
 
                 // Collapse Header
@@ -228,13 +232,92 @@ public struct LogScreen: View {
             .padding(.bottom, 8)
             .background(themeColors.appBarBackground)
 
-            // Priority Filter Bar
+            // 2. Collapsible Tag Search & Multi-Selection Bar
+            if isSearchExpanded {
+                VStack(spacing: 8) {
+                    // Search Input
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(themeColors.textSecondary)
+                        TextField("搜索并多选 Tag...", text: $tagSearchQuery)
+                            .foregroundColor(themeColors.textPrimary)
+                            .font(.system(size: 13))
+                        if !tagSearchQuery.isEmpty {
+                            Button(action: { tagSearchQuery = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(themeColors.textSecondary)
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .background(themeColors.chipBackground)
+                    .cornerRadius(8)
+                    .padding(.horizontal, 12)
+
+                    // Tag Multi-Select Horizontal ScrollBar (Natural Alphabetical Order)
+                    if filteredTags.isEmpty {
+                        Text("未找到匹配 \"\(tagSearchQuery)\" 的标签")
+                            .font(.system(size: 12))
+                            .foregroundColor(themeColors.textSecondary)
+                            .padding(.vertical, 4)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                // All Tag Button
+                                Button(action: {
+                                    viewModel.clearAllTags()
+                                }) {
+                                    Text("全部 Tag")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(viewModel.selectedTags.isEmpty ? .white : themeColors.textPrimary)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(viewModel.selectedTags.isEmpty ? Color.blue : themeColors.chipBackground)
+                                        .cornerRadius(10)
+                                }
+
+                                ForEach(filteredTags, id: \.self) { tag in
+                                    let isSelected = viewModel.selectedTags.contains(tag)
+                                    Button(action: {
+                                        viewModel.toggleTag(tag)
+                                    }) {
+                                        HStack(spacing: 2) {
+                                            if isSelected {
+                                                Text("✓")
+                                                    .font(.system(size: 11, weight: .bold))
+                                            }
+                                            highlightedText(text: tag, query: tagSearchQuery)
+                                                .font(.system(size: 12, weight: isSelected ? .bold : .regular))
+                                        }
+                                        .foregroundColor(isSelected ? .white : themeColors.textPrimary)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(isSelected ? Color.blue : themeColors.chipBackground)
+                                        .cornerRadius(10)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 1)
+                                        )
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 6)
+                        }
+                    }
+                }
+                .padding(.top, 6)
+                .background(themeColors.filterBarBackground)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            // 3. Priority Bar (Short-press Multi-select + Long-press Solo Mode)
             HStack(spacing: 6) {
-                Text("级别 (\(viewModel.selectedLevels.count)/\(allLevels.count)):")
+                Text("级别:")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(viewModel.selectedLevels.count < allLevels.count ? .blue : themeColors.textSecondary)
 
-                // ALL Chip
+                // ALL Button
                 let isAll = viewModel.selectedLevels.count == allLevels.count
                 Button(action: {
                     viewModel.selectAllLevels(all: allLevels)
@@ -248,23 +331,31 @@ public struct LogScreen: View {
                         .cornerRadius(6)
                 }
 
-                // V, D, I, W, E Chips
+                // V, D, I, W, E Chips with Count and Solo Mode
+                let counts = viewModel.levelCounts
                 ForEach(allLevels, id: \.self) { level in
                     let isSelected = viewModel.selectedLevels.contains(level)
                     let color = getPriorityColor(level)
                     let short = getShortName(level)
+                    let count = counts[level] ?? 0
 
                     Button(action: {
                         viewModel.toggleLevel(level)
                     }) {
-                        Text(isSelected ? "✓ \(short)" : short)
+                        Text(isSelected ? "✓ \(short) (\(count))" : "\(short) (\(count))")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(isSelected ? .white : (themeColors.isDark ? Color(hex: 0x777777) : Color(hex: 0x999999)))
-                            .padding(.horizontal, 8)
+                            .foregroundColor(isSelected ? .white : (themeColors.isDark ? Color(hex: 0x888888) : Color(hex: 0x666666)))
+                            .padding(.horizontal, 6)
                             .padding(.vertical, 4)
                             .background(isSelected ? color : themeColors.chipBackground)
                             .cornerRadius(6)
                     }
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.4).onEnded { _ in
+                            viewModel.soloLevel(level, all: allLevels)
+                            showToast(viewModel.selectedLevels.count == 1 ? "已独占过滤: 只看 \(level)" : "已恢复全选级别")
+                        }
+                    )
                 }
 
                 Spacer()
@@ -273,34 +364,63 @@ public struct LogScreen: View {
             .padding(.vertical, 6)
             .background(themeColors.filterBarBackground)
 
-            // Tag Horizontal Quick Bar
-            if !viewModel.tags.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(viewModel.tags, id: \.self) { tag in
-                            let isSelected = tag == viewModel.selectedTag
-                            Button(action: {
-                                viewModel.selectTag(tag)
-                            }) {
-                                Text(tag)
-                                    .font(.system(size: 12, weight: isSelected ? .bold : .regular))
-                                    .foregroundColor(isSelected ? .white : themeColors.textPrimary)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(isSelected ? Color.blue : themeColors.chipBackground)
-                                    .cornerRadius(12)
+            // 4. Active Tags Bar (Displayed when tags are selected)
+            if !viewModel.selectedTags.isEmpty {
+                HStack(spacing: 6) {
+                    Text("已选 (\(viewModel.selectedTags.count)):")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.blue)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(Array(viewModel.selectedTags), id: \.self) { tag in
+                                HStack(spacing: 4) {
+                                    Text(tag)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.blue)
+
+                                    Button(action: {
+                                        viewModel.removeTag(tag)
+                                    }) {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.blue.opacity(0.15))
+                                .cornerRadius(12)
                             }
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+
+                    Button("清空") {
+                        viewModel.clearAllTags()
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.blue)
+                    .padding(.leading, 4)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
                 .background(themeColors.filterBarBackground)
             }
 
             Rectangle()
                 .fill(themeColors.dividerColor)
                 .frame(height: 1)
+        }
+    }
+
+    private func showToast(_ text: String) {
+        withAnimation {
+            toastMessage = text
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation {
+                toastMessage = nil
+            }
         }
     }
 
@@ -313,14 +433,7 @@ public struct LogScreen: View {
         NSPasteboard.general.setString(content, forType: .string)
         #endif
 
-        withAnimation {
-            toastMessage = "已复制日志至剪贴板"
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation {
-                toastMessage = nil
-            }
-        }
+        showToast("已复制日志至剪贴板")
     }
 
     private func getShortName(_ level: String) -> String {
@@ -331,6 +444,28 @@ public struct LogScreen: View {
         case "WARN":    return "W"
         case "ERROR":   return "E"
         default:        return level
+        }
+    }
+
+    @ViewBuilder
+    private func highlightedText(text: String, query: String) -> some View {
+        if query.trimmingCharacters(in: .whitespaces).isEmpty {
+            Text(text)
+        } else if let range = text.range(of: query, options: .caseInsensitive) {
+            let prefix = String(text[..<range.lowerBound])
+            let match = String(text[range])
+            let suffix = String(text[range.upperBound...])
+
+            HStack(spacing: 0) {
+                if !prefix.isEmpty { Text(prefix) }
+                Text(match)
+                    .background(Color(red: 1.0, green: 0.835, blue: 0.31)) // 亮黄色高亮
+                    .foregroundColor(.black)
+                    .font(.system(size: 12, weight: .bold))
+                if !suffix.isEmpty { Text(suffix) }
+            }
+        } else {
+            Text(text)
         }
     }
 }
@@ -383,120 +518,6 @@ private struct LogItemCard: View {
             .shadow(color: Color.black.opacity(themeColors.isDark ? 0.3 : 0.06), radius: 2, x: 0, y: 1)
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - TagSelectionDialog
-
-private struct TagSelectionDialog: View {
-    let tags: [String]
-    let selectedTag: String
-    let themeColors: LogThemeColors
-    let onSelectTag: (String) -> Void
-    let onDismiss: () -> Void
-
-    @State private var query: String = ""
-
-    private var filteredTags: [String] {
-        if query.trimmingCharacters(in: .whitespaces).isEmpty {
-            return tags
-        }
-        return tags.filter { $0.localizedCaseInsensitiveContains(query) }
-    }
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 8),
-        GridItem(.flexible(), spacing: 8)
-    ]
-
-    var body: some View {
-        NavigationView {
-            ZStack {
-                themeColors.dialogBackground
-                    .ignoresSafeArea()
-
-                VStack(spacing: 12) {
-                    // Search Bar
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(themeColors.textSecondary)
-                        TextField("输入 Tag 名称过滤...", text: $query)
-                            .foregroundColor(themeColors.textPrimary)
-                        if !query.isEmpty {
-                            Button(action: { query = "" }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(themeColors.textSecondary)
-                            }
-                        }
-                    }
-                    .padding(8)
-                    .background(themeColors.chipBackground)
-                    .cornerRadius(8)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-
-                    // Tag Grid with Yellow Highlight
-                    if filteredTags.isEmpty {
-                        Spacer()
-                        Text("未找到包含 \"\(query)\" 的 Tag")
-                            .font(.system(size: 13))
-                            .foregroundColor(themeColors.textSecondary)
-                        Spacer()
-                    } else {
-                        ScrollView {
-                            LazyVGrid(columns: columns, spacing: 8) {
-                                ForEach(filteredTags, id: \.self) { tag in
-                                    let isSelected = tag == selectedTag
-                                    Button(action: { onSelectTag(tag) }) {
-                                        highlightedText(text: tag, query: query)
-                                            .font(.system(size: 13, weight: isSelected ? .bold : .regular))
-                                            .foregroundColor(isSelected ? .white : themeColors.textPrimary)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 8)
-                                            .padding(.horizontal, 8)
-                                            .background(isSelected ? Color.blue : themeColors.chipBackground)
-                                            .cornerRadius(6)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 6)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("查找并筛选 Tag")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭", action: onDismiss)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func highlightedText(text: String, query: String) -> some View {
-        if query.isEmpty {
-            Text(text)
-        } else if let range = text.range(of: query, options: .caseInsensitive) {
-            let prefix = String(text[..<range.lowerBound])
-            let match = String(text[range])
-            let suffix = String(text[range.upperBound...])
-
-            HStack(spacing: 0) {
-                if !prefix.isEmpty { Text(prefix) }
-                Text(match)
-                    .background(Color(red: 1.0, green: 0.835, blue: 0.31)) // 亮黄色高亮
-                    .foregroundColor(.black)
-                    .font(.system(size: 13, weight: .bold))
-                if !suffix.isEmpty { Text(suffix) }
-            }
-        } else {
-            Text(text)
-        }
     }
 }
 
