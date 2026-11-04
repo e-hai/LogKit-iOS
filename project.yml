@@ -1,0 +1,32 @@
+name: LogKitDemo
+options:
+  bundleIdPrefix: com.kit.log
+  deploymentTarget:
+    iOS: "15.0"
+packages:
+  LogKit:
+    path: .
+targets:
+  LogKitDemo:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: Sample
+    dependencies:
+      - package: LogKit
+        product: LogKit
+    settings:
+      base:
+        INFOPLIST_FILE: Sample/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.kit.log.demo
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_PREVIEWS: YES
+        SWIFT_VERSION: "5.0"
+schemes:
+  LogKitDemo:
+    build:
+      targets:
+        LogKitDemo: all
+    run:
+      config: Debug
